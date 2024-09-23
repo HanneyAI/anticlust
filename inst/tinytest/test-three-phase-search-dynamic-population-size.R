@@ -79,7 +79,7 @@ result3
 result_cluster3
 
 
-## test cluster vector
+## test cluster vector with different sizes
 
 N2 <- 11
 M2 <- 2
@@ -93,7 +93,7 @@ table_cluseters <- table(result_cluster$result)
 table_cluseters
 expect_true(all(table_cluseters == clusters))
 
-## test cluster vector
+## test cluster vector swith higher cluster size
 
 N2 <- 140
 M2 <- 2
@@ -128,14 +128,13 @@ K2 <- 3
 dat2 <- matrix(rnorm(N2 * M2), ncol = M2)
 distances2 <- dist(dat2)
 
-result_cluster <- anticlust:::three_phase_search_anticlustering(distances2, K2, N2)
+result_cluster <- anticlust:::three_phase_search_anticlustering(distances2, K2, N2, max_iterations = 100)
 
 frequency <- table(result_cluster$result)
 frequency_in_range <- frequency >= result_cluster$lower_bound & frequency <= result_cluster$upper_bound
 expect_true(all(frequency_in_range), info = "is in boundaries")
 frequency
 result_cluster$upper_bound
-
 
 # Test problematic cases
 
@@ -155,5 +154,32 @@ expect_error(
 )
 
 
+### Test dispersion ###
+
+N <- 12
+M <- 2
+K <- 3
+
+dat <- matrix(rnorm(N * M), ncol = M)
+distances <- dist(dat)
+
+result_cluster1 <- anticlust:::three_phase_search_anticlustering(distances, K, N, objective = "dispersion")
+result_cluster2 <- optimal_anticlustering(distances, objective = "dispersion", K=K, solver = "lpSolve")
 
 
+dispersion1 <- dispersion_objective(distances, result_cluster1$result)
+dispersion2 <- dispersion_objective(distances, result_cluster2)
+result_cluster1$score
+
+expect_equal(dispersion1, dispersion2, info = "tdspd and lpsolve dispersion are identical")
+
+
+result1 <- convert_to_group_pattern(result_cluster1$result)
+result2 <- convert_to_group_pattern(result_cluster2)
+
+expect_true(all(result1 == result2), info = "tdspd and lpsolve are identical")
+
+result_cluster1$result
+result1
+result2
+result_cluster2

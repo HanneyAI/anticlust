@@ -6,6 +6,7 @@
 #include <string.h>
 #include <R.h>
 #include <Rinternals.h>
+#include <assert.h>
 #include "three-phase-header.h"
 
 int beta_max;
@@ -31,6 +32,8 @@ Neighborhood *Neighbors;
 //double neighboorhood local search
 int *s; // partition array for each v
 double objective;
+double *min_distance_per_cluster;
+int (*min_distance_tuple)[2];
 
 // Matrix M
 double **Delta_Matrix;  // incremental matrix 
@@ -57,6 +60,13 @@ int *ub;
 double** Avg;
 int* Rd, * UnderLB; //Rd=R
 int *SizeG; //c_g
+
+void adding(int new_ind, int g);
+void removing(int removed_ind, int new_group);
+void swapping(int ind1, int ind2);
+void UNDIRECTED_PERTURBATION();
+void fill_arrays();
+void initialize_arrays();
 
 /* Exchange Method for Anticlustering Based on a Distance matrix
  * 
@@ -135,6 +145,10 @@ void three_phase_search_disperion(
     }
   }
   
+  min_distance_per_cluster = (double *)malloc(K * sizeof(double));
+  min_distance_tuple = (int (*)[2]) malloc(K * sizeof(int[2]));
+  initialize_arrays();
+  
   if (clusters[0] == -1 ) {
     // Allocate memory for LB and UB arrays
     LB = (int*)malloc(K * sizeof(int));
@@ -155,7 +169,7 @@ void three_phase_search_disperion(
         UB[i] = clusters[i];  // Assuming upper_bound is a pointer to an int
     }
   }
-  
+
   AssignMemory();
   if (*mem_error == 1) {
     return;
@@ -172,6 +186,8 @@ void three_phase_search_disperion(
   *score = S_b.cost;
   
   // Remember to free the allocated memory after use
+  free(min_distance_per_cluster);
+  free(min_distance_tuple);
   for (int i = 0; i < N; i++) {
     free(Distances[i]); Distances[i] = NULL;
     free(DistancesT[i]); DistancesT[i] = NULL;
@@ -184,6 +200,91 @@ void three_phase_search_disperion(
   ReleaseMemory();
 }
 
+void initialize_arrays() {
+    for (int k = 0; k < K; k++) {
+        min_distance_per_cluster[k] = INFINITY;
+        min_distance_tuple[k][0] = 0;
+        min_distance_tuple[k][1] = 0;
+    }
+}
+
+// Function to fill the arrays based on the distance matrix and cluster assignments
+void fill_arrays() {
+    for (int i = 0; i < N - 1; i++) {
+        for (int j = i + 1; j < N; j++) {
+            if (Distances[i][j] < min_distance_per_cluster[s[i]]) {
+                min_distance_per_cluster[s[i]] = Distances[i][j];
+                min_distance_tuple[s[i]][0] = i;
+                min_distance_tuple[s[i]][1] = j;
+            }
+        }
+    }
+}
+
+// Function to evaluate the objective function
+double evaluate_objective() {
+    double f = min_distance_per_cluster[0];
+    for (int k = 1; k < K; k++) {
+        f = fmin(f, min_distance_per_cluster[k]);
+    }
+    return f;
+}
+
+// Function to add an element to a cluster
+void adding(int new_ind, int cluster) {
+    for (int i = 0; i < N; i++) {
+        if (s[i] == cluster) {
+            if (Distances[i][new_ind] < min_distance_per_cluster[cluster]) {
+                min_distance_per_cluster[cluster] = Distances[i][new_ind];
+                min_distance_tuple[cluster][0] = i;
+                min_distance_tuple[cluster][1] = new_ind;
+            }
+        }
+    }
+    s[new_ind] = cluster;
+}
+
+// Function to remove an element from its cluster
+void removing(int removed_ind, int new_group) {
+    int g = s[removed_ind];
+    s[removed_ind] = -1;  // Temporarily hide the index
+    if (min_distance_tuple[g][0] == removed_ind || min_distance_tuple[g][1] == removed_ind) {
+		// only requires update of objective function if remove_ind appears in min_distance_tuple
+        min_distance_per_cluster[g] = INFINITY;
+        for (int i = 0; i < N - 1; i++) {
+            if (s[i] == g) {
+                for (int j = i + 1; j < N; j++) {
+                    if (s[j] == g) {
+                        if (Distances[i][j] < min_distance_per_cluster[g]) {
+                            min_distance_per_cluster[g] = Distances[i][j];
+                            min_distance_tuple[g][0] = i;
+                            min_distance_tuple[g][1] = j;
+                        }
+                    }
+                }
+            }
+        }
+    }
+	// do not forget to carry out the adding to another cluster afterwards using the procedure above
+	adding(removed_ind,new_group);
+}
+
+void swapping(int ind1, int ind2) {
+    int g1 = s[ind1];
+    int g2 = s[ind2];
+
+    // Assert that the two indices belong to different clusters
+    assert(g1 != g2);
+
+    // Temporarily hide ind1
+    s[ind1] = -1;
+
+    // Add ind2 to the cluster of g1
+    adding(ind2, g1);
+
+    // Add ind1 to the cluster of g2
+    adding(ind1, g2);
+}
 
 
 void SearchAlgorithm() {
@@ -195,7 +296,7 @@ void SearchAlgorithm() {
     //important! for windows and linux there is a differnt definition of this time
     //on windows its the wall time, on linux the CPU time
     clock_t start_time = clock();
-    S_b.cost = -INFINITY;
+    S_b.cost = INFINITY;  //dispersion should be miminzed
     
     // Initial population generation
     int i, j, k;
@@ -204,7 +305,7 @@ void SearchAlgorithm() {
         for (j = 0; j < N; j++) S[i].s[j] = CS.s[j];
         for (k = 0; k < K; k++) S[i].SizeG[k] = CS.SizeG[k];
         S[i].cost = CS.cost;
-        if (S[i].cost > S_b.cost) {
+        if (S[i].cost < S_b.cost) {
             for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
             for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
             S_b.cost = S[i].cost;
@@ -224,7 +325,7 @@ void SearchAlgorithm() {
         for (i = 0; i < beta_max; i++) {
             UndirectedPerturbation(eta, S[i].s, S[i].SizeG);
             DoubleNeighborhoodLocalSearch(S[i].s, S[i].SizeG, &S[i].cost);
-            if (S[i].cost > S_b.cost) {
+            if (S[i].cost < S_b.cost) {
                 for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
                 for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
                 S_b.cost = S[i].cost;
@@ -242,7 +343,7 @@ void SearchAlgorithm() {
                 DoubleNeighborhoodLocalSearch(O[i].s, O[i].SizeG, &O[i].cost);
             }
             for (i = 0; i < beta_max; i++) {
-                if (O[i].cost >= S[i].cost) {
+                if (O[i].cost <= S[i].cost) {
                     for (j = 0; j < N; j++) S[i].s[j] = O[i].s[j];
                     for (k = 0; k < K; k++) S[i].SizeG[k] = O[i].SizeG[k];
                     S[i].cost = O[i].cost;
@@ -251,7 +352,7 @@ void SearchAlgorithm() {
                     for (k = 0; k < K; k++) S[i].SizeG[k] = O[i].SizeG[k];
                     S[i].cost = O[i].cost;
                 }
-                if (S[i].cost > S_b.cost) {
+                if (S[i].cost < S_b.cost) {
                     for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
                     for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
                     S_b.cost = S[i].cost;
@@ -263,7 +364,7 @@ void SearchAlgorithm() {
         for (i = 0; i < beta_max; i++) {
             DirectPerturbation(eta_max, S[i].s, S[i].SizeG);
             DoubleNeighborhoodLocalSearch(S[i].s, S[i].SizeG, &S[i].cost);
-            if (S[i].cost > S_b.cost) {
+            if (S[i].cost < S_b.cost) {
                 for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
                 for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
                 S_b.cost = S[i].cost;
@@ -300,12 +401,11 @@ void DoubleNeighborhoodLocalSearch(int partition[], int SizeGroup[], double* cos
     // Initialize the partition array
     for (i = 0; i < N; i++) s[i] = partition[i];
 
-    // Build the delta_f matrix for cost changes
-    BuildDeltaMatrix();
-
     // Initialize the delta_f value
     double delta_f = -99999.0;
 
+    int g1, g2;
+    double old_f1, old_f2;
     do {
         imp = 0;  // Reset improvement flag
 
@@ -314,25 +414,19 @@ void DoubleNeighborhoodLocalSearch(int partition[], int SizeGroup[], double* cos
             for (g = 0; g < K; g++) {
                 // Check if moving `v` to `group` is valid and beneficial
                 if ((s[v] != g) && (SizeGroup[s[v]] > LB[s[v]]) && (SizeGroup[g] < UB[g])) {
-                    delta_f = Delta_Matrix[v][g] - Delta_Matrix[v][s[v]];
+                    g1 = s[v];
+                    old_f1 = min_distance_per_cluster[s[v]];
+                    old_f2 = min_distance_per_cluster[g];
+                    removing(v, g);  //remove and add
 
-                    if (delta_f > DELTA_THRESHOLD) {
-                        oldGroup = s[v];
-
-                        // Update delta_f matrix for the move
-                        OneMoveUpdateDeltaMatrix(v, oldGroup, g);
-
-                        // Update group sizes
-                        SizeGroup[oldGroup] -= 1;
-                        SizeGroup[g] += 1;
-
-                        // Assign v to new group
-                        s[v] = g;
-
-                        // Update total cost
-                        objective += delta_f;
-
-                        // Mark as improved
+                    delta_f = min_distance_per_cluster[g] - old_f2 + min_distance_per_cluster[g1] - old_f1;
+                    if (delta_f <= 0) {
+                        // revert changes
+                        s[v] = g1;
+                        min_distance_per_cluster[g1] = old_f1;
+                        min_distance_per_cluster[g] = old_f2;
+                    } else {
+                        objective = evaluate_objective();
                         imp = 1;
                     }
                 }
@@ -344,27 +438,21 @@ void DoubleNeighborhoodLocalSearch(int partition[], int SizeGroup[], double* cos
             for (u = v + 1; u < N; u++) {
                 // Only swap if nodes are in different groups
                 if (s[v] != s[u]) {
-                    delta_f = (Delta_Matrix[v][s[u]] - Delta_Matrix[v][s[v]])
-                          + (Delta_Matrix[u][s[v]] - Delta_Matrix[u][s[u]])
-                          - DistancesT[v][u];
+                    g1 = s[v];
+                    g2 = s[u];
+                    old_f1 = min_distance_per_cluster[s[v]];
+                    old_f2 = min_distance_per_cluster[s[u]];
+                    swapping(u,v); 
 
-                    if (delta_f > DELTA_THRESHOLD) {
-                        oldGroup = s[v];
-                        oldGroup1 = s[u];
-
-                        // Update delta_f matrix M for the swap
-                        OneMoveUpdateDeltaMatrix(v, oldGroup, oldGroup1);
-                        OneMoveUpdateDeltaMatrix(u, oldGroup1, oldGroup);
-
-                        // Swap the two nodes between groups
-                        t = s[v];
-                        s[v] = s[u];
-                        s[u] = t;
-
-                        // Update total cost
-                        objective += delta_f;
-
-                        // Mark as improved
+                    delta_f = min_distance_per_cluster[g] - old_f2 + min_distance_per_cluster[g1] - old_f1;
+                    if (delta_f <= 0) {
+                        // revert changes
+                        s[v] = g1;
+                        s[u] = g2;
+                        min_distance_per_cluster[g1] = old_f1;
+                        min_distance_per_cluster[g2] = old_f2;
+                    } else {
+                        objective = evaluate_objective();
                         imp = 1;
                     }
                 }
@@ -383,7 +471,6 @@ void UndirectedPerturbation(int L, int partition[], int SizeGroup[]) {
     int current_index;
     int v, g, x, y;
     int oldGroup, oldGroup1, swap;
-
 
     for (int i = 0; i < N; i++) {
         s[i] = partition[i];
@@ -424,6 +511,9 @@ void UndirectedPerturbation(int L, int partition[], int SizeGroup[]) {
             }
         }
     }
+
+    //calculate new min_distance_per_cluster distances according changes
+    fill_arrays();
 
     // Copy the perturbed partition back to the original partition
     for (int i = 0; i < N; i++) {
@@ -858,66 +948,6 @@ void Crossover(int partition1[], int partition2[], int score[], int scSizeGroup[
         }
         totalSize++;
     }
-}
-
-double LocalSearchCriterionCalcutlation(int partition1[], int partition2[], double cost1, double cost2) {
-    /* 
-     * Evaluates the quality and dissimilarity of partitions.
-     * It calculates the value that combines the ratio of costs and a
-     * dissimilarity factor between partition1 and partition2.
-     */
-    
-    // Handle potential division by zero
-    if (cost2 == 0.0) {
-        fprintf(stderr, "Error: Division by zero (cost2 is zero).\n");
-        return -1;  
-    }
-
-    int i, j;
-    int count = 0;
-    int totalPairs = (N * (N - 1)) / 2;  // Number of unique pairs (i, j) where i < j
-
-    // Loop over all pairs of elements to count dissimilar pairs
-    for (i = 0; i < N - 1; i++) {
-        for (j = i + 1; j < N; j++) {
-            // Count cases where elements are grouped differently in the two partitions
-            if ((partition1[i] == partition1[j]) !=  (partition2[i] == partition2[j])) {
-                count++;
-            }
-        }
-    }
-
-    // Calculate ratio of costs + dissimilarity factor
-    // should alpha not be alpha/2 ?
-    double dissimilarityFactor = ((double)count / totalPairs) * K;
-    return  cost1 / cost2 +  alpha *  dissimilarityFactor;
-}
-
-void BuildNeighbors() {
-	/* Initializes the neighbor structure for optimization */
-	int i, j;
-	int count = 0;
-	
-    // Type 1 neighbors: (i, j) where each element i can be in group j
-	for (i = 0; i < N; i++)
-		for (j = 0; j < K; j++)
-		{
-			Neighbors[count].type = 1;
-			Neighbors[count].v = i;
-			Neighbors[count].g = j;
-			count++;
-		}
-
-    // Type 2 neighbors: (i, j) where each pair of elements (i, j) are neighbors    
-	for (i = 0; i < N; i++)
-		for (j = i + 1; j < N; j++)
-		{
-			Neighbors[count].type = 2;
-			Neighbors[count].x = i;
-			Neighbors[count].y = j;
-			count++;
-		}
-		
 }
 
 void AssignMemory() {
