@@ -9,29 +9,29 @@
 #include <assert.h>
 #include "three-phase-header.h"
 
-int beta_max;
-int N, K;  // node number and group number
-double** Distances;   // distance matrix between elements
-double** DistancesT;
-int* LB; // Lower bound of the number of elements in the group i 
-int* UB; // Upper bound of the number of elements in the group i
-double theta, theta_max, theta_min; 
-double alpha;
-int beta_min; 
-int eta_max;
+extern int beta_max;
+extern int N, K;  // node number and group number
+extern double** Distances;   // distance matrix between elements
+extern double** DistancesT;
+extern int* LB; // Lower bound of the number of elements in the group i 
+extern int* UB; // Upper bound of the number of elements in the group i
+extern double theta, theta_max, theta_min; 
+extern double alpha;
+extern int beta_min; 
+extern int eta_max;
 
 // main processure
-int maxNumberIterations;
-double start_time, Time_limit;
-Solution S_b; //best solution
-Solution CS;
-Solution *S; //S_i
-Solution *O; //O_i in crossover
-Neighborhood *Neighbors;
+extern int maxNumberIterations;
+extern double start_time, Time_limit;
+extern Solution S_b; //best solution
+extern Solution CS;
+extern Solution *S; //S_i
+extern Solution *O; //O_i in crossover
+extern Neighborhood *Neighbors;
 
 //double neighboorhood local search
-int *s; // partition array for each v
-double objective;
+extern int *s; // partition array for each v
+extern double objective;
 double *min_distance_per_cluster;
 int **min_distance_tuple;
 
@@ -40,40 +40,39 @@ double *min_distance_per_cluster_p1;
 int **min_distance_tuple_p1;
 double *min_distance_per_cluster_p2;
 int **min_distance_tuple_p2;
-int *SelectEle;
-int *SelectEleTemp;
-int *SelectGroup;
-int *p1;
-int *p2;
+extern int *SelectEle;
+extern int *SelectEleTemp;
+extern int *SelectGroup;
+extern int *p1;
+extern int *p2;
 
-// for crossover
-int *vectorElement;
-int *groupElement;
-int *LBGroup;
-int *UBGroup;
-int *BigThanLB;
-int *ub;
+// for ;crossover
+extern int *vectorElement;
+extern int *groupElement;
+extern int *LBGroup;
+extern int *UBGroup;
+extern int *BigThanLB;
+extern int *ub;
 
 //directed pertubation
-int* Rd, * UnderLB; //Rd=R
-int *SizeG; //c_g
+extern int* Rd, * UnderLB; //Rd=R
+extern int *SizeG; //c_g
 
 void adding(int new_ind, int g, int *partition, int **s_min_distance_tuple, double *s_min_distance_per_cluster);
 void removing(int removed_ind, int *partition, int **s_min_distance_tuple, double *s_min_distance_per_cluster);
 void swapping(int ind1, int ind2, int *partition, int **s_min_distance_tuple, double *s_min_distance_per_cluster);
-void UNDIRECTED_PERTURBATION();
 double evaluate_objective(double *s_min_distance_per_cluster);
 void fill_arrays(int *partition, int **s_min_distance_tuple, double *s_min_distance_per_cluster);
 void initialize_arrays(int **s_min_distance_tuple, double *s_min_distance_per_cluster);
 void DoubleNeighborhoodLocalSearchDispersion(int partition[], int SizeGroup[], double* cost);
-void SearchAlgorithmDisperion();
+void SearchAlgorithmDisperion(void);
 void InitialSolDispersion(Solution *S);
 void UndirectedPerturbationDispersion(int L, int partition[], int SizeGroup[]);
 void DoubleNeighborhoodLocalSearchDispersion(int partition[], int SizeGroup[], double* cost);
 void CrossoverDispersion(int partition1[], int partition2[], int score[], int scSizeGroup[]);
-double LocalSearchCriterionCalcutlationDispersion(int partition1[], int partition2[], double cost1, double cost2);
-void RandomInitialSolDispersion(int s[], int SizeG[]);
 void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[]);
+void AssignMemoryDispersion();
+void ReleaseMemoryDispersion();
 
 /* Exchange Method for Anticlustering Based on a Distance matrix
  * 
@@ -189,7 +188,7 @@ void three_phase_search_disperion(
     }
   }
 
-  AssignMemory();
+  AssignMemoryDispersion();
   if (*mem_error == 1) {
     return;
   }
@@ -220,7 +219,7 @@ void three_phase_search_disperion(
   free(LB); LB = NULL;
   free(UB); UB = NULL;
   
-  ReleaseMemory();
+  ReleaseMemoryDispersion();
 }
 
 void initialize_arrays(int **s_min_distance_tuple, double *s_min_distance_per_cluster) {
@@ -416,7 +415,6 @@ void InitialSolDispersion(Solution *S) {
 }
 
 void DoubleNeighborhoodLocalSearchDispersion(int partition[], int SizeGroup[], double* cost) {
-    const double DELTA_THRESHOLD = 0.0001;  // Define a constant for comparison threshold
     int i, v, g, u;
     int imp;
 
@@ -494,7 +492,7 @@ void UndirectedPerturbationDispersion(int L, int partition[], int SizeGroup[]) {
 
     int current_index;
     int v, g, x, y;
-    int oldGroup, oldGroup1, swap;
+    int oldGroup, swap;
 
     for (int i = 0; i < N; i++) {
         s[i] = partition[i];
@@ -526,8 +524,6 @@ void UndirectedPerturbationDispersion(int L, int partition[], int SizeGroup[]) {
 
             // Apply perturbation if elements are in different groups
             if (s[x] != s[y]) {
-                oldGroup = s[x];
-                oldGroup1 = s[y];
                 swap = s[x];
                 s[x] = s[y];
                 s[y] = swap;
@@ -972,7 +968,7 @@ void CrossoverDispersion(int partition1[], int partition2[], int solutionChild[]
     }
 }
 
-void AssignMemory() {
+void AssignMemoryDispersion() {
     /*  Allocates memory dynamically for various arrays and matrices necessary 
 	for the algorithm's execution. This includes structures for population management, 
 	distance matrices, diversity measures, and neighborhood exploration.
@@ -1020,7 +1016,7 @@ void AssignMemory() {
     p2 = (int*)malloc(N * sizeof(int));
 }
 
-void ReleaseMemory() {
+void ReleaseMemoryDispersion() {
     /* responsible for reading the input file, 
     initializing matrices, and setting constraints on group sizes. */ 
     
