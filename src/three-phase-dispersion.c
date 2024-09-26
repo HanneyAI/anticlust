@@ -551,12 +551,13 @@ void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[])
     /* Algorithm 6: Directed Perturbation. 
 	Iteratively refines partitions to balance group sizes and minimize costs */
 
-    int i, j, k, L, number, minDeltaValue, minElement;
+    int i, j, k, L, number, minDeltaValue, minElement, alternativMinElement, ind1, ind2;
+    double objective_k;
 
     // Initialize the partition and size groups
     for (i = 0; i < N; i++) s[i] = partition[i];
     for (j = 0; j < K; j++) SizeG[j] = SizeGroup[j];
-    BuildDeltaMatrix();
+    fill_arrays(s, min_distance_tuple, min_distance_per_cluster);
 
     // Main loop for perturbation iterations
     for (L = 0; L < eta_max; L++) {
@@ -571,18 +572,40 @@ void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[])
             }
         }
 
-        // Find the minimum scoring element for each group
         for (k = 0; k < K; k++) {
-            minDeltaValue = 99999999;
-            minElement = 0;
-            for (i = 0; i < N; i++) {
-                if (s[i] == k) {
-                    if (Delta_Matrix[i][k] < minDeltaValue) {
-                        minDeltaValue = Delta_Matrix[i][k];
-                        minElement = i;
-                    }
-                }
+            // Pseudo group 8 to 13
+            /* Remove the element x, y from the tuple of cluster k which have the lowest dipserion.
+             Calculate the minimal dispersion value after removing x and y in cluster k. 
+             The element which leads to the lower minimum dispersion of the cluster k after its removal
+             will be removed from the cluster k. */
+            minElement = min_distance_tuple[k][0];
+            removing(min_distance_tuple[k][0], s, min_distance_tuple, min_distance_per_cluster);
+            minDeltaValue = min_distance_per_cluster[k];
+            adding(minElement, k, s, min_distance_tuple, min_distance_per_cluster);  
+            alternativMinElement = min_distance_tuple[k][1];
+            removing(min_distance_tuple[k][1], s, min_distance_tuple, min_distance_per_cluster);
+            if (min_distance_per_cluster[k] < minDeltaValue) {
+                minDeltaValue = min_distance_per_cluster[k];
+                minElement = alternativMinElement;
+            } else {
+                adding(alternativMinElement, k, s, min_distance_tuple, min_distance_per_cluster);
+                removing(minElement, s, min_distance_tuple, min_distance_per_cluster);
             }
+
+            // store values before removing() in temporary values. This speeds-up the adding-process. In short:
+            ind1 = min_distance_tuple[k][0];
+            ind2 = min_distance_tuple[k][1];
+            objective_k = min_distance_per_cluster[k];
+            removing(ind1);
+            minDeltaValue = min_distance_per_cluster[k];
+            // restore changes simply from ind1 and objective_k:
+            min_distance_tuple[k][0] = ind1;
+            min_distance_tuple[k][1] = ind2;
+            min_distance_per_cluster[k] = objective_k;
+            s[ind1] = k; // restore class membership
+
+            
+
 
             // Record the minimum element for removal
             Rd[k] = minElement;
