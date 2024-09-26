@@ -36,9 +36,6 @@ double *min_distance_per_cluster;
 int **min_distance_tuple;
 
 // Crosssover
-double **Delta_Matrix;  // incremental matrix 
-double **Delta_Matrix_p1;
-double **Delta_Matrix_p2;
 double *min_distance_per_cluster_p1;
 int **min_distance_tuple_p1;
 double *min_distance_per_cluster_p2;
@@ -58,7 +55,6 @@ int *BigThanLB;
 int *ub;
 
 //directed pertubation
-double** Avg;
 int* Rd, * UnderLB; //Rd=R
 int *SizeG; //c_g
 
@@ -422,7 +418,6 @@ void InitialSolDispersion(Solution *S) {
 void DoubleNeighborhoodLocalSearchDispersion(int partition[], int SizeGroup[], double* cost) {
     const double DELTA_THRESHOLD = 0.0001;  // Define a constant for comparison threshold
     int i, v, g, u;
-    int oldGroup, oldGroup1, t;
     int imp;
 
     // Initialize the partition array
@@ -551,8 +546,9 @@ void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[])
     /* Algorithm 6: Directed Perturbation. 
 	Iteratively refines partitions to balance group sizes and minimize costs */
 
-    int i, j, k, L, number, minDeltaValue, minElement, alternativMinElement, ind1, ind2;
-    double objective_k;
+    int i, j, k, L, number, minElement;
+    int new_ind, ind1, ind2, selectedElement;
+    double objective_k, minDeltaValue, maxDeltaValue;
 
     // Initialize the partition and size groups
     for (i = 0; i < N; i++) s[i] = partition[i];
@@ -567,9 +563,6 @@ void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[])
         for (i = 0; i < K; i++) {
             UnderLB[i] = 0;
             Rd[i] = -1;
-            for (j = 0; j < K; j++) {
-                Avg[i][j] = 0.0;
-            }
         }
 
         for (k = 0; k < K; k++) {
@@ -578,34 +571,30 @@ void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[])
              Calculate the minimal dispersion value after removing x and y in cluster k. 
              The element which leads to the lower minimum dispersion of the cluster k after its removal
              will be removed from the cluster k. */
-            minElement = min_distance_tuple[k][0];
-            removing(min_distance_tuple[k][0], s, min_distance_tuple, min_distance_per_cluster);
-            minDeltaValue = min_distance_per_cluster[k];
-            adding(minElement, k, s, min_distance_tuple, min_distance_per_cluster);  
-            alternativMinElement = min_distance_tuple[k][1];
-            removing(min_distance_tuple[k][1], s, min_distance_tuple, min_distance_per_cluster);
-            if (min_distance_per_cluster[k] < minDeltaValue) {
-                minDeltaValue = min_distance_per_cluster[k];
-                minElement = alternativMinElement;
-            } else {
-                adding(alternativMinElement, k, s, min_distance_tuple, min_distance_per_cluster);
-                removing(minElement, s, min_distance_tuple, min_distance_per_cluster);
-            }
-
+          
             // store values before removing() in temporary values. This speeds-up the adding-process. In short:
             ind1 = min_distance_tuple[k][0];
             ind2 = min_distance_tuple[k][1];
             objective_k = min_distance_per_cluster[k];
-            removing(ind1);
+            removing(ind1, s, min_distance_tuple, min_distance_per_cluster);
             minDeltaValue = min_distance_per_cluster[k];
             // restore changes simply from ind1 and objective_k:
             min_distance_tuple[k][0] = ind1;
             min_distance_tuple[k][1] = ind2;
             min_distance_per_cluster[k] = objective_k;
             s[ind1] = k; // restore class membership
-
-            
-
+            removing(ind2, s, min_distance_tuple, min_distance_per_cluster);
+             if (min_distance_per_cluster[k] < minDeltaValue) {
+                minDeltaValue = min_distance_per_cluster[k];
+                minElement = ind2;
+            } else {
+                min_distance_tuple[k][0] = ind1;
+                min_distance_tuple[k][1] = ind2;
+                min_distance_per_cluster[k] = objective_k;
+                s[ind2] = k; // restore class membership
+                removing(ind1, s, min_distance_tuple, min_distance_per_cluster);
+                minElement = ind1;
+            }
 
             // Record the minimum element for removal
             Rd[k] = minElement;
@@ -618,91 +607,83 @@ void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[])
             }
         }
 
-        // Rebuild the Delta matrix and average connections after removal
-        for (i = 0; i < K; i++) {
-            for (j = 0; j < K; j++) {
-                Delta_Matrix[Rd[i]][s[Rd[j]]] = Delta_Matrix[Rd[i]][s[Rd[j]]] - Distances[Rd[i]][Rd[j]];
-                Avg[s[Rd[i]]][s[Rd[j]]] = Delta_Matrix[Rd[i]][s[Rd[j]]] / SizeG[s[Rd[j]]];
-            }
-        }        
+        // line 15 of pseudo group will be removed, since it is not necessary for dispersion     
 		
         // Handle groups that are under the lower bound (LB)
         int selectedGroup;
-        int maxAvgCon;
         int nn = 0;
-        int i;
+        int k;
         while (nn < number) {
-            maxAvgCon = -9999;
-            i = random_int(K);
+            // pseudo code line 17 - 29
+            k = random_int(K);
 
             // Find the element with the highest average connection to the group
             do {
-                i = (i + 1) % K;
-            } while (UnderLB[i] == 0);
-            for (j = 0; j < K; j++) {
-                if (Avg[j][i] > maxAvgCon) {
-                    maxAvgCon = Avg[j][i];
-                    selectedGroup = j;
+                k = (k + 1) % K;
+            } while (UnderLB[k] == 0);     
+
+            // store values before adding() in temporary values. This speeds-up the removing-process. In short:
+            maxDeltaValue = -INFINITY; // min_delta cannot become positive by adding a new data point to a cluster for dispersion
+            for (i = 0; i < K; i++) {
+                new_ind = Rd[i];
+                if (new_ind > -1) {
+                    ind1 = min_distance_tuple[k][0];
+                    ind2 = min_distance_tuple[k][1];
+                    objective_k = min_distance_per_cluster[k];
+                    adding(new_ind, k, s, min_distance_tuple, min_distance_per_cluster);
+                    if (min_distance_per_cluster[k] - objective_k > maxDeltaValue) {
+                        minDeltaValue = min_distance_per_cluster[k] - objective_k;
+                        selectedElement = new_ind;
+                        selectedGroup = i;
+                    }
+                    // restore changes simply from ind1 and objective_k:
+                    min_distance_tuple[k][0] = ind1;
+                    min_distance_tuple[k][1] = ind2;
+                    min_distance_per_cluster[k] = objective_k;
+                    s[new_ind] = -1; // remove new_ind from class
                 }
             }
-
-            // Move the selected element to the group
-            SizeG[i] += 1;
-            for (k = 0; k < K; k++) {
-                if (Rd[k] != -1) {
-                    Delta_Matrix[Rd[k]][i] += Distances[Rd[k]][Rd[selectedGroup]];
-                    Avg[s[Rd[k]]][i] = Delta_Matrix[Rd[k]][i] / SizeG[i];
-                }
-            }
-
-            // Clear old connections for the moved element and finalize the move
-            for (k = 0; k < K; k++) {
-                Avg[s[Rd[selectedGroup]]][k] = 0.0;
-            }
-            s[Rd[selectedGroup]] = i;
-            UnderLB[i] = 0;
+            adding(selectedElement, k, s, min_distance_tuple, min_distance_per_cluster);  
+            
+            UnderLB[k] = 0;
             Rd[selectedGroup] = -1;
             nn++;
         }
 
         // Handle remaining elements for groups that are above LB
-        int groupWithMaxAvgCon;
         nn = 0;
         while (nn < K - number) {
+            // pseuo group line 32 - 43
             selectedGroup = rand() % K;
             do {
                 selectedGroup = (selectedGroup + 1) % K;
             } while (Rd[selectedGroup] == -1);
-            maxAvgCon = -9999;
-            for (j = 0; j < K; j++) {
-                if (Avg[selectedGroup][j] > maxAvgCon) {
-                    maxAvgCon = Avg[selectedGroup][j];
-                    groupWithMaxAvgCon = j;
-                }
-            }
-            // Move the selected element to the group
-            if (SizeG[groupWithMaxAvgCon] < UB[groupWithMaxAvgCon]) {
-                SizeG[groupWithMaxAvgCon] += 1;
-                for (k = 0; k < K; k++) {
-                    if (Rd[k] != -1) {
-                        Delta_Matrix[Rd[k]][groupWithMaxAvgCon] += Distances[Rd[k]][Rd[selectedGroup]];
-                        Avg[s[Rd[k]]][groupWithMaxAvgCon] = Delta_Matrix[Rd[k]][groupWithMaxAvgCon] / SizeG[groupWithMaxAvgCon];
+
+            maxDeltaValue = -INFINITY;
+            new_ind = Rd[selectedGroup];
+            Rd[selectedGroup] = -1;
+            for (k = 0; k < K; i++) {
+                // check that upper-bound ub[k] is not yet reached
+                    if (SizeG[k] < UB[k]) {
+                    ind1 = min_distance_tuple[k][0];
+                    ind2 = min_distance_tuple[k][1];
+                    objective_k = min_distance_per_cluster[k];
+                    adding(new_ind, k, s, min_distance_tuple, min_distance_per_cluster);
+                    if (min_distance_per_cluster[k] - objective_k > maxDeltaValue) {
+                        minDeltaValue = min_distance_per_cluster[k] - objective_k;
+                        selectedGroup = k;
                     }
+                    // restore changes simply from ind1 and objective_k:
+                    min_distance_tuple[k][0] = ind1;
+                    min_distance_tuple[k][1] = ind2;
+                    min_distance_per_cluster[k] = objective_k;
+                    s[new_ind] = -1; // remove new_ind from class
                 }
-                for (k = 0; k < K; k++) {
-                	Avg[s[Rd[selectedGroup]]][k] = 0.0;
-                }
-                s[Rd[selectedGroup]] = groupWithMaxAvgCon;
-				Rd[selectedGroup] = -1;
-				nn += 1;
-			}
-			else {
-				for (k = 0; k < K; k++) {
-					Avg[k][groupWithMaxAvgCon] = 0.0;
-				}
             }
+            adding(new_ind, selectedGroup, s, min_distance_tuple, min_distance_per_cluster); 
+
+            nn += 1;
         }
-        BuildDeltaMatrix();
     }
 
     for (i = 0; i < N; i++) partition[i] = s[i];
@@ -1022,8 +1003,6 @@ void AssignMemory() {
     
     Neighbors = (Neighborhood*)malloc((N * (N - 1) / 2 + N * K) * sizeof(Neighborhood));
     
-    Avg = (double**)malloc(K * sizeof(double*));
-    for (i = 0; i < K; i++) Avg[i] = (double*)malloc(K * sizeof(double));
     Rd = (int*)malloc(K * sizeof(int));
     for (i = 0; i < K; i++) Rd[i] = 0;
     UnderLB = (int*)malloc(K * sizeof(int));
@@ -1056,8 +1035,7 @@ void ReleaseMemory() {
     free(LB); LB = NULL;
     free(UB); UB = NULL;
     free(Neighbors); Neighbors = NULL;
-    
-    free(Avg); Avg = NULL;
+
     free(Rd); Rd = NULL;
     free(UnderLB); UnderLB = NULL;
     free(ub); ub = NULL;
