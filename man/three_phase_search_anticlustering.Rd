@@ -9,6 +9,7 @@ three_phase_search_anticlustering(
   x,
   K,
   N,
+  objective = "diversity",
   number_iterations = 50,
   clusters = NULL,
   upper_bound = NULL,
@@ -23,6 +24,10 @@ three_phase_search_anticlustering(
 }
 \arguments{
 \item{K}{Number of anticlusters to be formed.}
+
+\item{N}{Number of elememts.}
+
+\item{objective}{The anticlustering objective, can be "diversity" or "dispersion".}
 
 \item{clusters}{A vector of length K that specifies the number of elements each cluster can contain. 
 If this vector is not NULL, the lower and upper bounds will be disregarded.}

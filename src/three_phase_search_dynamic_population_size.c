@@ -58,7 +58,7 @@ double** Avg;
 int* Rd, * UnderLB; //Rd=R
 int *SizeG; //c_g
 
-/* Exchange Method for Anticlustering Based on a Distance matrix
+/* TPSPD for Anticlustering Based on a Distance matrix
  * 
  * param *distannces: vector of data points (in R, this is a distance matrix,
  *         the matrix structure must be restored in C)
@@ -110,6 +110,7 @@ void three_phase_search_dynamic_population_size(
 											int *result,
 											double *score,
 											int *mem_error) {
+  Rprintf("C is in diverity");
   N = *N_in;
   K = *K_in;
   beta_max = *Beta_max;  
@@ -325,7 +326,6 @@ void fisher_yates_shuffle(int arr[], int n) {
 
 void RandomInitialSol(int s[], int SizeG[]) {
 	/* Algorithm 2: initializes a random solution that respects the group size constraints */
-
 
     // Allocates memory
 	int* isAssigned = (int *)malloc(N * sizeof(int));  // Tracks if an element is assigned
@@ -920,6 +920,8 @@ double LocalSearchCriterionCalcutlation(int partition1[], int partition2[], doub
      * It calculates the value that combines the ratio of costs and a
      * dissimilarity factor between partition1 and partition2.
      */
+
+    Rprintf("Start lcoal serach criteriom");
     
     // Handle potential division by zero
     if (cost2 == 0.0) {
@@ -1171,7 +1173,7 @@ void ReleaseMemory() {
 
 // Generate a random integer from zero to max-1
 int random_int(int max) {
-GetRNGstate();
+  GetRNGstate();
   double my_number = unif_rand();
   PutRNGstate();
   return (int) floor(my_number * max);

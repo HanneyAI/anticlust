@@ -74,22 +74,29 @@ void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[])
 void AssignMemoryDispersion();
 void ReleaseMemoryDispersion();
 
-/* Exchange Method for Anticlustering Based on a Distance matrix
+/* TPSPD for Anticlustering Based on a Distance matrix
  * 
- * param *distances: vector of data points (in R, this is a distance matrix,
+ * param *distannces: vector of data points (in R, this is a distance matrix,
  *         the matrix structure must be restored in C)
  * param *N_in: The number of elements (i.e., number of "rows" in *data)
- * param *K_in: The number of clusters
- * param *C: The number of categories
- * param *lower_bound: Minimum number of elements in each anticluster.
+ * param *K_in: The number of clusters. When lower_bound and upper_boound are set to the number of K, 
+ *              the clusters will be equally sized. 
+ * param *number_of_iterations: A number that defines how many times the steps in the search algorithm are repeated.
+ * param *clusters: A predefined vector of length K specifies the number of elements in each cluster.
+ *               If a default vector [-1] is provided, cluster sizes will be determined based 
+ *               on the lower and upper bounds. When a cluster size array is provided, 
+ *               the lower and upper bounds are ignored as they become redundant.
+ * param *lower_bound: Minimum number of elements in each anticluster. 
  * param *upper_bound: Maximum number of elements in each anticluster.
  * param *Beta_max: The algorithm begins with a pool of random initial solutions of size beta_max. 
  *                   Over time, the size of the solution pool decreases linearly until it reaches beta_min.
- * param *time_limit:  Maximum execution time of the algorithm (in seconds)
- * param *Theta_max: Parameter for the strength of undirected perturbation, which decreases linearly over time from theta_max to theta_min..
- * param *Theta_min: Parameter for the strength of undirected perturbation, which decreases linearly over time from theta_max to theta_min..
+ * param *elapsed_time: Measures the runtime of the algotihm (in seconds)
+ * param *Theta_max: Parameter for the strength of undirected perturbation,
+ *                   which decreases linearly over time from theta_max to theta_min..
+ * param *Theta_min: Parameter for the strength of undirected perturbation, 
+ *                   which decreases linearly over time from theta_max to theta_min..
  * param *Beta_min: The minimum solution pool size the algorithm should reach before making a determination.
- * param *Eta_max: .
+ * param *Eta_max: A parameter that specifies how many times the steps in the direct perturbation are executed.
  * param *Alpha: Parameter for weitghing the discrimitation of a slighlty worse local optiomal child solution
  *               in Yang et al. set to 0.05 (might differ due to different implemetnation of calculation).
  * param *result: Calculated assignment of elements to clusters. Emptz vector.
@@ -101,16 +108,16 @@ void ReleaseMemoryDispersion();
  * 
  * The return value is assigned to the argument `result`, via pointer
 */
-void three_phase_search_disperion(
+void three_phase_search_dispersion(
                       double *distances, 
                       int *N_in,
                       int *K_in, 
+                      int *number_of_iterations,
+                      int *clusters,
                       int *upper_bound, 
                       int *lower_bound, 
-					  int *number_of_iterations,
-                      int *clusters,
 											int *Beta_max, 
-											int *time_limit,
+											int *elapsed_time,
 											double *Theta_max,
 											double *Theta_min,
 											int *Beta_min,
@@ -120,6 +127,9 @@ void three_phase_search_disperion(
 											double *score,
 											int *mem_error) {
 
+
+  Rprintf("C is in dispersion");
+
   N = *N_in;
   K = *K_in;
   beta_max = *Beta_max;  
@@ -127,7 +137,7 @@ void three_phase_search_disperion(
   theta_max = *Theta_max;
   beta_min = *Beta_min;
   eta_max = *Eta_max;
-  Time_limit =  *time_limit;
+  Time_limit =  *elapsed_time;
   alpha = *Alpha;
   maxNumberIterations = *number_of_iterations;
   
@@ -142,7 +152,7 @@ void three_phase_search_disperion(
     DistancesT[i] = (double*)malloc(N * sizeof(double));
     if (DistancesT[i] == NULL) { *mem_error = 1; return; }
   }
-  
+    
   // Fill Distances and DistancesT with values from input
   for (int i = 0; i < N; i++) {
     for (int j = 0; j < N; j++) {
@@ -165,8 +175,11 @@ void three_phase_search_disperion(
   min_distance_tuple_p2 = malloc(K * sizeof(int *));
   for (int i = 0; i < K; i++) {
     min_distance_tuple[i] = malloc(2 * sizeof(int));
+    
   }
   
+  Rprintf("lower bound %d\n", *lower_bound);
+  Rprintf("K %d\n", K);
   if (clusters[0] == -1 ) {
     // Allocate memory for LB and UB arrays
     LB = (int*)malloc(K * sizeof(int));
@@ -193,6 +206,7 @@ void three_phase_search_disperion(
     return;
   }
   
+
   BuildNeighbors();
   
   SearchAlgorithmDisperion();
@@ -295,9 +309,6 @@ void swapping(int ind1, int ind2, int *partition, int **s_min_distance_tuple, do
     int g1 = partition[ind1];
     int g2 = partition[ind2];
 
-    // Assert that the two indices belong to different clusters
-    assert(g1 != g2);
-
     // Temporarily hide ind1
     partition[ind1] = -1;
 
@@ -318,7 +329,8 @@ void SearchAlgorithmDisperion() {
     //important! for windows and linux there is a differnt definition of this time
     //on windows its the wall time, on linux the CPU time
     clock_t start_time = clock();
-    S_b.cost = INFINITY;  //dispersion should be miminzed
+    S_b.cost = 0;  //dispersion should be maximized
+    Rprintf("Start Search Algortihm\n");
     
     // Initial population generation
     int i, j, k;
@@ -327,16 +339,18 @@ void SearchAlgorithmDisperion() {
         for (j = 0; j < N; j++) S[i].s[j] = CS.s[j];
         for (k = 0; k < K; k++) S[i].SizeG[k] = CS.SizeG[k];
         S[i].cost = CS.cost;
-        if (S[i].cost < S_b.cost) {
+        if (S[i].cost > S_b.cost) {
             for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
             for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
             S_b.cost = S[i].cost;
         }
     }
+    Rprintf("Initial Sol completed\n");
  
     int counter = 1;
     while (counter <= maxNumberIterations) {
         
+        Rprintf("Start Counter: %d\n", counter);
         eta = (int)(theta * N / K);
         for (i = 0; i < beta_max; i++) {
             for (j = 0; j < N; j++) O[i].s[j] = S[i].s[j];
@@ -345,9 +359,9 @@ void SearchAlgorithmDisperion() {
         }
         // Strong Perturbation and Local Search
         for (i = 0; i < beta_max; i++) {
-            UndirectedPerturbationDispersion(eta, S[i].s, S[i].SizeG);
-            DoubleNeighborhoodLocalSearchDispersion(S[i].s, S[i].SizeG, &S[i].cost);
-            if (S[i].cost < S_b.cost) {
+          //  UndirectedPerturbationDispersion(eta, S[i].s, S[i].SizeG);
+          //  DoubleNeighborhoodLocalSearchDispersion(S[i].s, S[i].SizeG, &S[i].cost);
+            if (S[i].cost > S_b.cost) {
                 for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
                 for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
                 S_b.cost = S[i].cost;
@@ -361,11 +375,11 @@ void SearchAlgorithmDisperion() {
                 do {
                     pickedSolution = (pickedSolution + 1) % beta_max;
                 } while (pickedSolution == i);
-                CrossoverDispersion(S[i].s, S[pickedSolution].s, O[i].s, O[i].SizeG);
-                DoubleNeighborhoodLocalSearchDispersion(O[i].s, O[i].SizeG, &O[i].cost);
+          //      CrossoverDispersion(S[i].s, S[pickedSolution].s, O[i].s, O[i].SizeG);
+          //      DoubleNeighborhoodLocalSearchDispersion(O[i].s, O[i].SizeG, &O[i].cost);
             }
             for (i = 0; i < beta_max; i++) {
-                if (O[i].cost <= S[i].cost) {
+                if (O[i].cost >= S[i].cost) {
                     for (j = 0; j < N; j++) S[i].s[j] = O[i].s[j];
                     for (k = 0; k < K; k++) S[i].SizeG[k] = O[i].SizeG[k];
                     S[i].cost = O[i].cost;
@@ -374,7 +388,7 @@ void SearchAlgorithmDisperion() {
                     for (k = 0; k < K; k++) S[i].SizeG[k] = O[i].SizeG[k];
                     S[i].cost = O[i].cost;
                 }
-                if (S[i].cost < S_b.cost) {
+                if (S[i].cost > S_b.cost) {
                     for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
                     for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
                     S_b.cost = S[i].cost;
@@ -384,14 +398,19 @@ void SearchAlgorithmDisperion() {
 
         // Direct Perturbation and Local Search
         for (i = 0; i < beta_max; i++) {
-            DirectPerturbationDispersion(eta_max, S[i].s, S[i].SizeG);
-            DoubleNeighborhoodLocalSearchDispersion(S[i].s, S[i].SizeG, &S[i].cost);
-            if (S[i].cost < S_b.cost) {
+        //    DirectPerturbationDispersion(eta_max, S[i].s, S[i].SizeG);
+        //    DoubleNeighborhoodLocalSearchDispersion(S[i].s, S[i].SizeG, &S[i].cost);
+            if (S[i].cost > S_b.cost) {
                 for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
                 for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
                 S_b.cost = S[i].cost;
             }
         }
+
+        Rprintf("Best Solution : %f\n", S_b.cost);
+        //for(i = 0; i < beta_max; i++) {
+          //  Rprintf("Solution i[%d] : %f\n", i, S[i].cost);
+        //}
 
         // Linearly decrease population size
         // Note: Implement sort function based on the comparison function `Cmpare`
@@ -415,6 +434,8 @@ void InitialSolDispersion(Solution *S) {
 }
 
 void DoubleNeighborhoodLocalSearchDispersion(int partition[], int SizeGroup[], double* cost) {
+
+    Rprintf("Start local search");
     int i, v, g, u;
     int imp;
 
@@ -490,6 +511,7 @@ void DoubleNeighborhoodLocalSearchDispersion(int partition[], int SizeGroup[], d
 void UndirectedPerturbationDispersion(int L, int partition[], int SizeGroup[]) {
     /* Algorithm 4: Undirected Perturbation. Applies a strong perturbation to the partition */
 
+    Rprintf("Start Search Algortihm");
     int current_index;
     int v, g, x, y;
     int oldGroup, swap;
@@ -541,6 +563,8 @@ void UndirectedPerturbationDispersion(int L, int partition[], int SizeGroup[]) {
 void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[]) {
     /* Algorithm 6: Directed Perturbation. 
 	Iteratively refines partitions to balance group sizes and minimize costs */
+
+    Rprintf("Start Directed Pertubation");
 
     int i, j, k, L, number, minElement;
     int new_ind, ind1, ind2, selectedElement;
@@ -689,6 +713,7 @@ void DirectPerturbationDispersion(int eta_max, int partition[], int SizeGroup[])
 void CrossoverDispersion(int partition1[], int partition2[], int solutionChild[], int scSizeGroup[]) {
     /* Algorithm 5: combines partitions in a way that maintains group constraints */
 
+    Rprintf("Start Crossover");
     int i, j, maxGroupDispersion, selectedGroup;
     int elementCount, groupCount;
     int targetGroup = -1;
