@@ -329,11 +329,15 @@ void SearchAlgorithmDisperion() {
     //important! for windows and linux there is a differnt definition of this time
     //on windows its the wall time, on linux the CPU time
     clock_t start_time = clock();
-    S_b.cost = 0;  //dispersion should be maximized
-    Rprintf("Start Search Algortihm\n");
+    S_b.cost = -1;  //dispersion should be maximized
+    int i;
+    for(i = 0; i < N; i++) {
+        Rprintf("Solution S_B[%d] : %d\n", i, S_b.s[i]);
+    }
+     Rprintf("Solution S_B cost : %f\n", S_b.cost);
     
     // Initial population generation
-    int i, j, k;
+    int j, k;
     for (i = 0; i < beta_max; i++) {
         InitialSolDispersion(&CS);
         for (j = 0; j < N; j++) S[i].s[j] = CS.s[j];
@@ -346,6 +350,10 @@ void SearchAlgorithmDisperion() {
         }
     }
     Rprintf("Initial Sol completed\n");
+    for(i = 0; i < N; i++) {
+        Rprintf("Solution S_B[%d] : %d\n", i, S_b.s[i]);
+    }
+     Rprintf("Solution S_B cost : %f\n", S_b.cost);
  
     int counter = 1;
     while (counter <= maxNumberIterations) {
@@ -359,8 +367,8 @@ void SearchAlgorithmDisperion() {
         }
         // Strong Perturbation and Local Search
         for (i = 0; i < beta_max; i++) {
-          //  UndirectedPerturbationDispersion(eta, S[i].s, S[i].SizeG);
-          //  DoubleNeighborhoodLocalSearchDispersion(S[i].s, S[i].SizeG, &S[i].cost);
+           // UndirectedPerturbationDispersion(eta, S[i].s, S[i].SizeG);
+           // DoubleNeighborhoodLocalSearchDispersion(S[i].s, S[i].SizeG, &S[i].cost);
             if (S[i].cost > S_b.cost) {
                 for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
                 for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
@@ -376,7 +384,7 @@ void SearchAlgorithmDisperion() {
                     pickedSolution = (pickedSolution + 1) % beta_max;
                 } while (pickedSolution == i);
           //      CrossoverDispersion(S[i].s, S[pickedSolution].s, O[i].s, O[i].SizeG);
-          //      DoubleNeighborhoodLocalSearchDispersion(O[i].s, O[i].SizeG, &O[i].cost);
+           //       DoubleNeighborhoodLocalSearchDispersion(O[i].s, O[i].SizeG, &O[i].cost);
             }
             for (i = 0; i < beta_max; i++) {
                 if (O[i].cost >= S[i].cost) {
@@ -399,7 +407,7 @@ void SearchAlgorithmDisperion() {
         // Direct Perturbation and Local Search
         for (i = 0; i < beta_max; i++) {
         //    DirectPerturbationDispersion(eta_max, S[i].s, S[i].SizeG);
-        //    DoubleNeighborhoodLocalSearchDispersion(S[i].s, S[i].SizeG, &S[i].cost);
+            //DoubleNeighborhoodLocalSearchDispersion(S[i].s, S[i].SizeG, &S[i].cost);
             if (S[i].cost > S_b.cost) {
                 for (j = 0; j < N; j++) S_b.s[j] = S[i].s[j];
                 for (k = 0; k < K; k++) S_b.SizeG[k] = S[i].SizeG[k];
@@ -408,9 +416,9 @@ void SearchAlgorithmDisperion() {
         }
 
         Rprintf("Best Solution : %f\n", S_b.cost);
-        //for(i = 0; i < beta_max; i++) {
-          //  Rprintf("Solution i[%d] : %f\n", i, S[i].cost);
-        //}
+        for(i = 0; i < beta_max; i++) {
+            Rprintf("Solution i[%d] : %f\n", i, S[i].cost);
+        }
 
         // Linearly decrease population size
         // Note: Implement sort function based on the comparison function `Cmpare`
@@ -435,19 +443,23 @@ void InitialSolDispersion(Solution *S) {
 
 void DoubleNeighborhoodLocalSearchDispersion(int partition[], int SizeGroup[], double* cost) {
 
-    Rprintf("Start local search");
+   // Rprintf("Start local search");
     int i, v, g, u;
     int imp;
 
     // Initialize the partition array
     for (i = 0; i < N; i++) s[i] = partition[i];
 
-    // Initialize the delta_f value
+    // Initialize the delta_f value and tuple arrays
     double delta_f = -99999.0;
+    fill_arrays(s, min_distance_tuple, min_distance_per_cluster);
+    for (int k = 0; k < K; k++) {
+        Rprintf("cluster min distance of k %d: %f\n", k, min_distance_per_cluster[k]);
+    }
 
     int g1, g2;
     double old_f1, old_f2;
-    do {
+    do { 
         imp = 0;  // Reset improvement flag
 
         // First loop: Move individual elements to improve partition
@@ -505,13 +517,14 @@ void DoubleNeighborhoodLocalSearchDispersion(int partition[], int SizeGroup[], d
 
     // Update the partition array with the final assignments
     for (i = 0; i < N; i++) partition[i] = s[i];
+    Rprintf("Solution : %f\n", objective);
     *cost = objective;
 }
 
 void UndirectedPerturbationDispersion(int L, int partition[], int SizeGroup[]) {
     /* Algorithm 4: Undirected Perturbation. Applies a strong perturbation to the partition */
 
-    Rprintf("Start Search Algortihm");
+   // Rprintf("Start Search Algortihm");
     int current_index;
     int v, g, x, y;
     int oldGroup, swap;

@@ -181,7 +181,7 @@ K <- 3
 dat <- matrix(rnorm(N * M), ncol = M)
 distances <- dist(dat)
 
-result_cluster1 <- anticlust:::three_phase_search_anticlustering(dat, K, N, objective = "dispersion")
+result_cluster1 <- anticlust:::three_phase_search_anticlustering(dat, K, N, objective = "dispersion", number_iterations = 1, beta_max = 1)
 result_cluster1$result
 result_cluster1$score
 
