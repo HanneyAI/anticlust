@@ -128,7 +128,7 @@ K2 <- 3
 dat2 <- matrix(rnorm(N2 * M2), ncol = M2)
 distances2 <- dist(dat2)
 
-result_cluster <- anticlust:::three_phase_search_anticlustering(distances2, K2, N2, max_iterations = 100)
+result_cluster <- anticlust:::three_phase_search_anticlustering(distances2, K2, N2)
 
 frequency <- table(result_cluster$result)
 frequency_in_range <- frequency >= result_cluster$lower_bound & frequency <= result_cluster$upper_bound

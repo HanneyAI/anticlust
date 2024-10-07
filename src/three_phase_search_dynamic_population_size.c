@@ -920,8 +920,6 @@ double LocalSearchCriterionCalcutlation(int partition1[], int partition2[], doub
      * It calculates the value that combines the ratio of costs and a
      * dissimilarity factor between partition1 and partition2.
      */
-
-    Rprintf("Start lcoal serach criteriom");
     
     // Handle potential division by zero
     if (cost2 == 0.0) {
@@ -1124,11 +1122,7 @@ void ReleaseMemory() {
     
     free(s); s = NULL;
     free(SizeG); SizeG = NULL;
-    
-    free(CS.s); CS.s = NULL;
-    free(CS.SizeG); CS.SizeG = NULL;
-    free(S_b.s); S_b.s = NULL;
-    free(S_b.SizeG); S_b.SizeG = NULL;
+
 
     int i;
     for (i = 0; i < beta_max; i++) {
@@ -1140,6 +1134,10 @@ void ReleaseMemory() {
     free(S); S = NULL;
     free(O); O = NULL;
     
+    free(CS.s); CS.s = NULL;
+    free(CS.SizeG); CS.SizeG = NULL;
+    free(S_b.s); S_b.s = NULL;
+    free(S_b.SizeG); S_b.SizeG = NULL;
     free(LB); LB = NULL;
     free(UB); UB = NULL;
     free(Neighbors); Neighbors = NULL;
